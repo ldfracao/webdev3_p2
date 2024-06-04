@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.hash import bcrypt
+from fastapi.params import Cookie
 import jwt
 import requests
 from datetime import datetime, timedelta
@@ -61,7 +62,9 @@ async def register(username: str = Form(...), password: str = Form(...)):
     new_user = await create_user(user)
     payload = {"username": new_user["username"], "exp": datetime.utcnow() + timedelta(minutes=30)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    return RedirectResponse(url="/views/login.html", status_code=302)
+    response = RedirectResponse(url="/views/login.html", status_code=302)
+    response.set_cookie("token", token, secure=True, httponly=True)
+    return response
 
 @app.post("/login")
 async def login(username: str = Form(...), password: str = Form(...)):
@@ -74,10 +77,22 @@ async def login(username: str = Form(...), password: str = Form(...)):
 
     payload = {"username": existing_user["username"], "exp": datetime.utcnow() + timedelta(minutes=30)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    return RedirectResponse(url="/views/main.html", status_code=302, headers={"Authorization": f"Bearer {token}"})
+    response = RedirectResponse(url="/views/main.html", status_code=302)
+    response.set_cookie("token", token, secure=True, httponly=True)
+    return response
 
 @app.get("/search")
-async def search_pokemons(search: str):
+async def search_pokemons(search: str, token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload["username"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     url = f"https://pokeapi.co/api/v2/pokemon/{search}"
     response = requests.get(url)
     if response.status_code == 200:
@@ -86,17 +101,18 @@ async def search_pokemons(search: str):
     else:
         return JSONResponse(content={"error": "Pokémon not found"}, status_code=404)
 
-async def get_token(token: str = Depends(token_bearer)):
+@app.get("/cep")
+async def get_address_by_cep(cep: str, token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        username = payload["username"]
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-@app.get("/cep")
-async def get_address_by_cep(cep: str):
     url = f"https://viacep.com.br/ws/{cep}/json/"
     response = requests.get(url)
     if response.status_code == 200:
@@ -108,9 +124,58 @@ async def get_address_by_cep(cep: str):
     else:
         return JSONResponse(content={"error": "Failed to fetch data"}, status_code=response.status_code)
 
+@app.post("/save")
+async def save_to_database(pokemon: dict, cep: dict, token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload["username"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = await get_user(username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Format the CEP data
+    formatted_cep = f"{cep['cep'][:5]}-{cep['cep'][5:]}"
+    cep_data = {
+        "cep": formatted_cep,
+        "logradouro": cep["logradouro"],
+        "bairro": cep["bairro"],
+        "localidade": cep["localidade"],
+    }
+
+    # Combine the Pokémon and CEP data
+    data = {
+        "pokemon": pokemon["name"],
+        "cep": formatted_cep,
+        **cep_data,
+        "user_id": user["_id"],
+    }
+
+    # Save the data to the database
+    pokemon_collection = db["pokemons"]
+    result = await pokemon_collection.insert_one(data)
+
+    return {"message": "Data saved successfully!", "id": str(result.inserted_id)}
+
 @app.get("/protected")
-async def protected_route(token_data: TokenData = Depends(get_token)):
-    user = await get_user(token_data.username)
+async def protected_route(token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload["username"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = await get_user(username)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
     return {"message": "This is a protected route"}
