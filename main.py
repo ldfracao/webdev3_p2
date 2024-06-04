@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -9,12 +9,16 @@ from fastapi.params import Cookie
 import jwt
 import requests
 from datetime import datetime, timedelta
+from jinja2 import Environment, FileSystemLoader
 
 app = FastAPI()
-app.mount("/views", StaticFiles(directory="views"), name="views")
+app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 db_client = AsyncIOMotorClient("mongodb://localhost:27017")
 db = db_client["my_database"]
 users_collection = db["users"]
+pokemon_collection = db["pokemons"]
+
+jinja_env = Environment(loader=FileSystemLoader("templates"))
 
 class User(BaseModel):
     username: str
@@ -54,7 +58,7 @@ token_bearer = TokenBearer(auto_error=False)
 
 @app.get("/")
 def root():
-    return RedirectResponse(url="views/register.html", status_code=302)
+    return HTMLResponse(content=jinja_env.get_template("register.html").render(), status_code=200)
 
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...)):
@@ -62,7 +66,7 @@ async def register(username: str = Form(...), password: str = Form(...)):
     new_user = await create_user(user)
     payload = {"username": new_user["username"], "exp": datetime.utcnow() + timedelta(minutes=30)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    response = RedirectResponse(url="/views/login.html", status_code=302)
+    response = HTMLResponse(content=jinja_env.get_template("login.html").render(), status_code=200)
     response.set_cookie("token", token, secure=True, httponly=True)
     return response
 
@@ -77,7 +81,7 @@ async def login(username: str = Form(...), password: str = Form(...)):
 
     payload = {"username": existing_user["username"], "exp": datetime.utcnow() + timedelta(minutes=30)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    response = RedirectResponse(url="/views/main.html", status_code=302)
+    response = HTMLResponse(content=jinja_env.get_template("main.html").render(username=username), status_code=200)
     response.set_cookie("token", token, secure=True, httponly=True)
     return response
 
@@ -158,7 +162,6 @@ async def save_to_database(pokemon: dict, cep: dict, token: str = Cookie(None)):
     }
 
     # Save the data to the database
-    pokemon_collection = db["pokemons"]
     result = await pokemon_collection.insert_one(data)
 
     return {"message": "Data saved successfully!", "id": str(result.inserted_id)}
@@ -179,3 +182,30 @@ async def protected_route(token: str = Cookie(None)):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
     return {"message": "This is a protected route"}
+
+@app.get("/get-registered-pokemons")
+async def get_registered_pokemons(token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload["username"]
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError) as e:
+        raise HTTPException(status_code=401, detail="Invalid token") from e
+
+    user = await get_user(username)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    registered_pokemons_cursor = pokemon_collection.find({"user_id": user["_id"]})
+    registered_pokemons = await registered_pokemons_cursor.to_list(length=None)
+    
+    # Modify the response to include the cep field
+    response_data = [{"name": pokemon["pokemon"], "cep": pokemon["cep"]} for pokemon in registered_pokemons]
+
+    return JSONResponse(content=response_data, status_code=200)
+#@app.get("/templates/{template_name}")
+#def render_template(template_name: str):
+#    template = jinja_env.get_template(template_name)
+#    return HTMLResponse(content=template.render(), status_code=200)

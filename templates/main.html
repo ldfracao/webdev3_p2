@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Main Page</title>
+</head>
+<body>
+    <h1>Main Page</h1>
+    <p>Welcome, {{username}} </p>
+    <form action="/search" method="get">
+        <label for="search">Search for Pokémon:</label>
+        <input type="text" id="search" name="search"><br><br>
+        <input type="submit" value="Search">
+    </form>
+    <div id="search-results">
+        <!-- search results will be displayed here -->
+    </div>
+    <form action="/cep" method="get">
+        <label for="cep">Search for CEP:</label>
+        <input type="text" id="cep" name="cep"><br><br>
+        <input type="submit" value="Search">
+    </form>
+    <div id="cep-results">
+        <!-- CEP search results will be displayed here -->
+    </div>
+    <button id="save-button">Save to Database</button>
+    <h2>Registered Pokemons</h2>
+<div id="registered-pokemons">
+  <!-- registered pokemons will be displayed here -->
+</div>
+<script>
+    let pokemonData = null;
+    let cepData = null;
+    const cache = {
+        pokemons: {},
+        cep: {}
+    };
+
+    async function searchPokemons() {
+        const searchInput = document.getElementById("search");
+        const searchQuery = searchInput.value.trim();
+        if (searchQuery) {
+            const cachedResponse = cache.pokemons[searchQuery];
+            if (cachedResponse) {
+                const searchResultsDiv = document.getElementById("search-results");
+                searchResultsDiv.innerHTML = "";
+                const pokemonDiv = document.createElement("div");
+                pokemonDiv.textContent = `${cachedResponse.name} (${cachedResponse.id})`;
+                searchResultsDiv.appendChild(pokemonDiv);
+                pokemonData = cachedResponse;
+            } else {
+                const response = await fetch(`/search?search=${searchQuery}`);
+                const searchData = await response.json();
+                cache.pokemons[searchQuery] = searchData;
+                const searchResultsDiv = document.getElementById("search-results");
+                searchResultsDiv.innerHTML = "";
+                const pokemonDiv = document.createElement("div");
+                pokemonDiv.textContent = `${searchData.name} (${searchData.id})`;
+                searchResultsDiv.appendChild(pokemonDiv);
+                pokemonData = searchData;
+            }
+        }
+    }
+
+    async function searchCEP() {
+        const cepInput = document.getElementById("cep");
+        const cepQuery = cepInput.value.trim();
+        if (cepQuery) {
+            const cachedResponse = cache.cep[cepQuery];
+            if (cachedResponse) {
+                const cepResultsDiv = document.getElementById("cep-results");
+                cepResultsDiv.innerHTML = "";
+                cepResultsDiv.textContent = `CEP: ${cachedResponse.cep} - ${cachedResponse.logradouro}, ${cachedResponse.bairro}, ${cachedResponse.localidade} - ${cachedResponse.uf}`;
+                cepData = cachedResponse;
+            } else {
+                const response = await fetch(`/cep?cep=${cepQuery}`);
+                const cepDataResponse = await response.json();
+                cache.cep[cepQuery] = cepDataResponse;
+                const cepResultsDiv = document.getElementById("cep-results");
+                cepResultsDiv.innerHTML = "";
+                cepResultsDiv.textContent = `CEP: ${cepDataResponse.cep} - ${cepDataResponse.logradouro}, ${cepDataResponse.bairro}, ${cepDataResponse.localidade} - ${cepDataResponse.uf}`;
+                cepData = cepDataResponse;
+            }
+        }
+    }
+
+    document.getElementById("search").addEventListener("keyup", searchPokemons);
+    document.getElementById("cep").addEventListener("keyup", searchCEP);
+
+    document.getElementById("save-button").addEventListener("click", async () => {
+        if (pokemonData && cepData) {
+            const response = await fetch("/save", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    pokemon: pokemonData,
+                    cep: cepData
+                })
+            });
+            const result = await response.json();
+            console.log(result);
+
+            // Get the list of registered Pokémon
+            const registeredPokemonsResponse = await fetch("/get-registered-pokemons");
+            if (!registeredPokemonsResponse.ok) {
+                console.error("Failed to fetch registered pokemons:", registeredPokemonsResponse.statusText);
+                const errorText = await registeredPokemonsResponse.text();
+                console.error("Error text:", errorText);
+                return;
+            }
+            const rawText = await registeredPokemonsResponse.text(); // Log raw response
+            console.log("Raw Response:", rawText);
+
+            let registeredPokemons;
+            try {
+                registeredPokemons = JSON.parse(rawText);
+            } catch (e) {
+                console.error("Failed to parse JSON:", e);
+                return;
+            }
+            console.log(registeredPokemons); // Log the parsed response
+
+            // Update the HTML element to display the list of registered Pokémon
+            if (Array.isArray(registeredPokemons)) {
+                const registeredPokemonsDiv = document.getElementById("registered-pokemons");
+                registeredPokemonsDiv.innerHTML = "";
+                registeredPokemons.forEach((pokemon) => {
+                    const pokemonElement = document.createElement("div");
+                    pokemonElement.textContent = `${pokemon.name} (${pokemon.id})`;
+                    registeredPokemonsDiv.appendChild(pokemonElement);
+                });
+            } else {
+                console.error("Expected an array of registered pokemons");
+            }
+        } else {
+            alert("Please search for a Pokémon and a CEP first!");
+        }
+    });
+</script>
+</body>
+</html>
