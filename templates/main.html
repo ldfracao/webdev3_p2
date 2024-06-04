@@ -127,7 +127,7 @@
                 registeredPokemonsDiv.innerHTML = "";
                 registeredPokemons.forEach((pokemon) => {
                     const pokemonElement = document.createElement("div");
-                    pokemonElement.textContent = `${pokemon.name} (${pokemon.id})`;
+                    pokemonElement.textContent = `${pokemon.name} (${pokemon.cep})`;
                     registeredPokemonsDiv.appendChild(pokemonElement);
                 });
             } else {

@@ -145,7 +145,7 @@ async def save_to_database(pokemon: dict, cep: dict, token: str = Cookie(None)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     # Format the CEP data
-    formatted_cep = f"{cep['cep'][:5]}-{cep['cep'][5:]}"
+    formatted_cep = f"{cep['cep'][:5]}{cep['cep'][5:]}"
     cep_data = {
         "cep": formatted_cep,
         "logradouro": cep["logradouro"],
@@ -200,11 +200,7 @@ async def get_registered_pokemons(token: str = Cookie(None)):
 
     registered_pokemons_cursor = pokemon_collection.find({"user_id": user["_id"]})
     registered_pokemons = await registered_pokemons_cursor.to_list(length=None)
-    
-    # Modify the response to include the cep field
-    response_data = [{"name": pokemon["pokemon"], "cep": pokemon["cep"]} for pokemon in registered_pokemons]
-
-    return JSONResponse(content=response_data, status_code=200)
+    return JSONResponse(content=[{"name": pokemon["pokemon"], "cep": pokemon["cep"]} for pokemon in registered_pokemons], status_code=200)
 #@app.get("/templates/{template_name}")
 #def render_template(template_name: str):
 #    template = jinja_env.get_template(template_name)
