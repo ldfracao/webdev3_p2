@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Main Page</title>
+</head>
+<body>
+    <h1>Main Page</h1>
+    <form action="/search" method="get">
+        <label for="search">Search for Pokémon:</label>
+        <input type="text" id="search" name="search"><br><br>
+        <input type="submit" value="Search">
+    </form>
+    <div id="search-results">
+        <!-- search results will be displayed here -->
+    </div>
+    <form action="/cep" method="get">
+        <label for="cep">Search for CEP:</label>
+        <input type="text" id="cep" name="cep"><br><br>
+        <input type="submit" value="Search">
+    </form>
+    <div id="cep-results">
+        <!-- CEP search results will be displayed here -->
+    </div>
+
+    <script>
+async function searchPokemons() {
+    const searchInput = document.getElementById("search");
+    const searchQuery = searchInput.value.trim();
+    if (searchQuery) {
+        const response = await fetch(`/search?search=${searchQuery}`);
+        const searchData = await response.json();
+        const searchResultsDiv = document.getElementById("search-results");
+        searchResultsDiv.innerHTML = "";
+        const pokemonDiv = document.createElement("div");
+        pokemonDiv.textContent = `${searchData.name} (${searchData.id})`;
+        searchResultsDiv.appendChild(pokemonDiv);
+    }
+}
+        async function searchCEP() {
+            const cepInput = document.getElementById("cep");
+            const cepQuery = cepInput.value.trim();
+            if (cepQuery) {
+                const response = await fetch(`/cep?cep=${cepQuery}`);
+                const cepData = await response.json();
+                const cepResultsDiv = document.getElementById("cep-results");
+                cepResultsDiv.innerHTML = "";
+                cepResultsDiv.textContent = `CEP: ${cepData.cep} - ${cepData.logradouro}, ${cepData.bairro}, ${cepData.localidade} - ${cepData.uf}`;
+            }
+        }
+        document.getElementById("search").addEventListener("keyup", searchPokemons);
+        document.getElementById("cep").addEventListener("keyup", searchCEP);
+    </script>
+</body>
+</html>
