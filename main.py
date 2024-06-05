@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
+from bson import ObjectId
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +13,6 @@ from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
 
 app = FastAPI()
-app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 db_client = AsyncIOMotorClient("mongodb://localhost:27017")
 db = db_client["my_database"]
 users_collection = db["users"]
@@ -200,8 +200,33 @@ async def get_registered_pokemons(token: str = Cookie(None)):
 
     registered_pokemons_cursor = pokemon_collection.find({"user_id": user["_id"]})
     registered_pokemons = await registered_pokemons_cursor.to_list(length=None)
-    return JSONResponse(content=[{"name": pokemon["pokemon"], "cep": pokemon["cep"]} for pokemon in registered_pokemons], status_code=200)
-#@app.get("/templates/{template_name}")
-#def render_template(template_name: str):
-#    template = jinja_env.get_template(template_name)
-#    return HTMLResponse(content=template.render(), status_code=200)
+
+    # Modify the response to include the id of each Pokémon
+    response_data = [{"id": str(pokemon["_id"]), "name": pokemon["pokemon"], "cep": pokemon["cep"]} for pokemon in registered_pokemons]
+    
+    return JSONResponse(content=response_data, status_code=200)
+
+@app.delete("/delete/{pokemon_id}")
+async def delete_pokemon(pokemon_id: str, token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload["username"]
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = await get_user(username)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Verify that the provided ID is a valid ObjectId
+    if not ObjectId.is_valid(pokemon_id):
+        raise HTTPException(status_code=400, detail="Invalid Pokemon ID")
+
+    # Delete the Pokémon entry from the database
+    result = await pokemon_collection.delete_one({"_id": ObjectId(pokemon_id), "user_id": user["_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Pokémon not found")
+
+    return {"message": "Pokémon deleted successfully"}

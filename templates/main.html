@@ -133,10 +133,30 @@ if (Array.isArray(registeredPokemons)) {
             <button class="delete-button" data-pokemon-id="${pokemon.id}">Delete</button>
         `;
         registeredPokemonsDiv.appendChild(pokemonElement);
-    });
-            } else {
-                console.error("Expected an array of registered pokemons");
+
+        // Add event listener to the delete button
+        const deleteButton = pokemonElement.querySelector(".delete-button");
+        deleteButton.addEventListener("click", async () => {
+            try {
+                const response = await fetch(`/delete/${pokemon.id}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                });
+                if (!response.ok) {
+                    throw new Error(`Failed to delete ${pokemon.name}`);
+                }
+                // Remove the deleted entry from the UI
+                registeredPokemonsDiv.removeChild(pokemonElement);
+            } catch (error) {
+                console.error(error.message);
             }
+        });
+    });
+} else {
+    console.error("Expected an array of registered pokemons");
+}
         } else {
             alert("Please search for a Pokémon and a CEP first!");
         }
