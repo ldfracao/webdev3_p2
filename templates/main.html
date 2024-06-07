@@ -133,6 +133,29 @@ if (Array.isArray(registeredPokemons)) {
             <button class="delete-button" data-pokemon-id="${pokemon.id}">Delete</button>
         `;
         registeredPokemonsDiv.appendChild(pokemonElement);
+            // Add event listener to the update button
+            const updateButton = pokemonElement.querySelector(".update-button");
+            updateButton.addEventListener("click", async () => {
+                const newName = prompt("Enter the new name for the Pokémon:");
+                if (newName !== null) {
+                    try {
+                        const response = await fetch(`/update/${pokemon.id}`, {
+                            method: "PUT",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({ new_name: newName })
+                        });
+                        if (!response.ok) {
+                            throw new Error(`Failed to update ${pokemon.name}`);
+                        }
+                        // Refresh the page to reflect the updated data
+                        window.location.reload();
+                    } catch (error) {
+                        console.error(error.message);
+                    }
+                }
+            });
 
         // Add event listener to the delete button
         const deleteButton = pokemonElement.querySelector(".delete-button");

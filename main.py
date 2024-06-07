@@ -103,7 +103,7 @@ async def search_pokemons(search: str, token: str = Cookie(None)):
         pokemon_data = response.json()
         return JSONResponse(content={"name": pokemon_data["name"], "id": pokemon_data["id"]}, status_code=200)
     else:
-        return JSONResponse(content={"error": "Pokémon not found"}, status_code=404)
+        return JSONResponse(content={"error": "Pokemon not found"}, status_code=404)
 
 @app.get("/cep")
 async def get_address_by_cep(cep: str, token: str = Cookie(None)):
@@ -151,9 +151,10 @@ async def save_to_database(pokemon: dict, cep: dict, token: str = Cookie(None)):
         "logradouro": cep["logradouro"],
         "bairro": cep["bairro"],
         "localidade": cep["localidade"],
+        "uf": cep["uf"]
     }
 
-    # Combine the Pokémon and CEP data
+    # Combine the Pokemon and CEP data
     data = {
         "pokemon": pokemon["name"],
         "cep": formatted_cep,
@@ -201,7 +202,7 @@ async def get_registered_pokemons(token: str = Cookie(None)):
     registered_pokemons_cursor = pokemon_collection.find({"user_id": user["_id"]})
     registered_pokemons = await registered_pokemons_cursor.to_list(length=None)
 
-    # Modify the response to include the id of each Pokémon
+    # Modify the response to include the id of each Pokemon
     response_data = [{"id": str(pokemon["_id"]), "name": pokemon["pokemon"], "cep": pokemon["cep"]} for pokemon in registered_pokemons]
     
     return JSONResponse(content=response_data, status_code=200)
@@ -224,9 +225,30 @@ async def delete_pokemon(pokemon_id: str, token: str = Cookie(None)):
     if not ObjectId.is_valid(pokemon_id):
         raise HTTPException(status_code=400, detail="Invalid Pokemon ID")
 
-    # Delete the Pokémon entry from the database
+    # Delete the Pokemon entry from the database
     result = await pokemon_collection.delete_one({"_id": ObjectId(pokemon_id), "user_id": user["_id"]})
     if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Pokémon not found")
+        raise HTTPException(status_code=404, detail="Pokemon not found")
 
-    return {"message": "Pokémon deleted successfully"}
+    return {"message": "Pokemon deleted successfully"}
+
+@app.put("/update/{pokemon_id}")
+async def update_pokemon(pokemon_id: str, new_name: str, token: str = Cookie(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload["username"]
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = await get_user(username)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Update the Pokemon entry in the database
+    result = await pokemon_collection.update_one({"_id": ObjectId(pokemon_id), "user_id": user["_id"]}, {"$set": {"pokemon": new_name}})
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Pokemon not found")
+
+    return {"message": "Pokemon updated successfully"}
