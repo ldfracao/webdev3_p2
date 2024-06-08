@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request, Form
+from fastapi import FastAPI, HTTPException, Request, Form
 from bson import ObjectId
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -39,7 +39,7 @@ async def create_user(user: User):
     await users_collection.insert_one(new_user)
     return new_user
 
-SECRET_KEY = "your_secret_key_here"
+SECRET_KEY = "secret_key"
 ALGORITHM = "HS256"
 
 class TokenBearer(HTTPBearer):
@@ -166,23 +166,6 @@ async def save_to_database(pokemon: dict, cep: dict, token: str = Cookie(None)):
     result = await pokemon_collection.insert_one(data)
 
     return {"message": "Data saved successfully!", "id": str(result.inserted_id)}
-
-@app.get("/protected")
-async def protected_route(token: str = Cookie(None)):
-    if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload["username"]
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = await get_user(username)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return {"message": "This is a protected route"}
 
 @app.get("/get-registered-pokemons")
 async def get_registered_pokemons(token: str = Cookie(None)):
